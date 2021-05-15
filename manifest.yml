@@ -5,4 +5,5 @@ applications:
   instances: 1
   buildpack: go_buildpack
   env:
+    GOVERSION: go1.16
     APPD_AGENT: golang
