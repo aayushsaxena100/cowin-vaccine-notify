@@ -1,0 +1,8 @@
+applications:
+- name: Cowin-Vaccine-Notify
+  random-route: true
+  memory: 256M
+  instances: 1
+  buildpack: go_buildpack
+  env:
+    APPD_AGENT: golang
