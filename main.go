@@ -29,6 +29,8 @@ type centers struct {
 			AvailableCapacity int    `json:"available_capacity"`
 			MinAgeLimit       int    `json:"min_age_limit"`
 			Vaccine           string `json:"vaccine"`
+			AvailableCapDose1 int    `json:"available_capacity_dose1"`
+			AvailableCapDose2 int    `json:"available_capacity_dose2"`
 		} `json:"sessions"`
 	} `json:"centers"`
 }
@@ -37,7 +39,9 @@ func main() {
 	// Initialize chat bot
 	telegramBotToken := os.Getenv("BOT_TOKEN")
 	cowinUrl := os.Getenv("COWIN_URL")
-
+	c, _ := strconv.Atoi(os.Getenv("BOT_CHAT_ID"))
+	chatId := int64(c)
+	fmt.Println(chatId)
 	if telegramBotToken == "" || cowinUrl == "" {
 		fmt.Println("cannot read url/token")
 		os.Exit(0)
@@ -51,18 +55,6 @@ func main() {
 	}
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-	var chatId int64
-	updates, err := bot.GetUpdatesChan(u)
-
-	// Wait till user sends a message
-	for update := range updates {
-		if update.Message == nil { // ignore any non-Message Updates
-			continue
-		}
-
-		chatId = update.Message.Chat.ID
-		break
-	}
 
 	i := 0 // counter that helps incrementing date
 
@@ -71,7 +63,7 @@ func main() {
 
 		client := &http.Client{}
 		url := fmt.Sprintf(cowinUrl, d, m)
-		fmt.Println(url)
+		//fmt.Println(url)
 		req, _ := http.NewRequest("GET", url, nil)
 		req.Header.Set("User-Agent", "Test")
 		req.Header.Set("Accept", "application/json")
@@ -91,12 +83,15 @@ func main() {
 		for _, ctr := range c.Centers {
 			for _, sess := range ctr.Sessions {
 				if sess.MinAgeLimit >= 18 && sess.AvailableCapacity > 0 {
-					fmt.Println("Slot Found!!", ctr.Name, ctr.Address, ctr.Pincode)
+					fmt.Println("Slot Found!!\n", ctr.Name, ctr.Address, ctr.Pincode)
 					fmt.Printf("day=%v month=%v", d, m)
 					found = true
 
 					// Send notification to telegram
-					msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Slot Found!! Name: %v, Address: %v, Pincode: %v, Date: %v", ctr.Name, ctr.Address, ctr.Pincode, sess.Date))
+					text := fmt.Sprintf("Slot Found 18+!!\nName: %v\nAddress: %v\nPincode: %v\nDate: %v\n"+
+						"Total Available Shots: %v \nDose 1: %v\nDose 2: %v\nVaccine: %v", ctr.Name, ctr.Address, ctr.Pincode,
+						sess.Date, sess.AvailableCapacity, sess.AvailableCapDose1, sess.AvailableCapDose2, sess.Vaccine)
+					msg := tgbotapi.NewMessage(chatId, text)
 					bot.Send(msg)
 
 					break

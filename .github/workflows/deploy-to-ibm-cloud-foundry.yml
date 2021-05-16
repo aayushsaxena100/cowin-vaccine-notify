@@ -1,22 +1,70 @@
-name: Deploy to IBM Cloud Foundry
+name: Deploy to Amazon ECS
+
 on:
   workflow_dispatch
+
+env:
+  AWS_REGION: ap-south-1                                    # set this to your preferred AWS region, e.g. us-west-1
+  ECR_REPOSITORY: aayushsaxena100                           # set this to your Amazon ECR repository name
+  ECS_SERVICE: cowin-vaccine-notify-container-service       # set this to your Amazon ECS service name
+  ECS_CLUSTER: cowin-vaccine-notify-cluster                 # set this to your Amazon ECS cluster name
+  ECS_TASK_DEFINITION: .aws/ecs-task-definition.json        # set this to the path to your Amazon ECS task
+                                                            # definition file, e.g. .aws/task-definition.json
+  CONTAINER_NAME: cowin-vaccine-notify-container            # set this to the name of the container in the
+                                                            # containerDefinitions section of your task definition
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   deploy:
+    name: Deploy
     runs-on: ubuntu-latest
-    name: Deploy to IBM CF
-    env:
-      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      COWIN_URL: ${{ secrets.COWIN_URL }}
+    permissions:
+      packages: write
+      contents: read
+
     steps:
-      - name: Checkout head or tag
+      - name: Checkout
         uses: actions/checkout@v2
-        
-      - name: Deploy to IBM Cloud Foundry
-        # You may pin to the exact commit or the version.
-        uses: IBM/cloudfoundry-deploy@master
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          IBM_CLOUD_API_KEY: ${{ secrets.IBM_CLOUD_API_KEY }}
-          IBM_CLOUD_CF_API: ${{ secrets.IBM_CLOUD_CF_API }}
-          IBM_CLOUD_CF_ORG: ${{ secrets.IBM_CLOUD_CF_ORG }}
-          IBM_CLOUD_CF_SPACE: ${{ secrets.IBM_CLOUD_CF_SPACE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build a docker container and
+          # push it to ECR so that it can
+          # be deployed to ECS.
+          docker build --build-arg BOT_TOKEN_BUILD=${{secrets.BOT_TOKEN}} --build-arg COWIN_URL_BUILD=${{secrets.COWIN_URL}} --build-arg BOT_CHAT_ID_BUILD=${{secrets.BOT_CHAT_ID}} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

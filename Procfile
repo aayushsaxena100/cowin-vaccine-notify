@@ -1,1 +1,0 @@
-web: cowin-vaccine-notify
