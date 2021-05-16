@@ -3,27 +3,10 @@ name: Deploy to Amazon ECS
 on:
   workflow_dispatch
 
-env:
-  AWS_REGION: ap-south-1                                    # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: aayushsaxena100                           # set this to your Amazon ECR repository name
-  ECS_SERVICE: cowin-vaccine-notify-container-service       # set this to your Amazon ECS service name
-  ECS_CLUSTER: cowin-vaccine-notify-cluster                 # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: .aws/ecs-task-definition.json        # set this to the path to your Amazon ECS task
-                                                            # definition file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: cowin-vaccine-notify-container            # set this to the name of the container in the
-                                                            # containerDefinitions section of your task definition
-
-defaults:
-  run:
-    shell: bash
-
 jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
 
     steps:
       - name: Checkout
@@ -34,7 +17,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ap-south-1
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -44,6 +27,7 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: aayushsaxena100
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Build a docker container and
@@ -57,14 +41,14 @@ jobs:
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
+          task-definition: .aws/ecs-task-definition.json
+          container-name: cowin-vaccine-notify-container
           image: ${{ steps.build-image.outputs.image }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
+          service: cowin-vaccine-notify-container-service
+          cluster: cowin-vaccine-notify-cluster
           wait-for-service-stability: true
